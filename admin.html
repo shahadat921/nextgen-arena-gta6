@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Admin | NextGen Arena</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0b12;--card:#161622;--line:#2a2a3d;--text:#f2f2f7;--mute:#9a9ab0;--a:#ff3d81;--b:#7c5cff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.55}
+.wrap{max-width:640px;margin:0 auto;padding:16px 16px 60px}
+h1{font-size:20px;margin:6px 0 14px}h2{font-size:16px;margin:26px 0 10px;color:var(--mute)}
+input,textarea{width:100%;background:var(--card);border:1px solid var(--line);border-radius:12px;color:var(--text);font:inherit;font-size:16px;padding:12px;outline:none}
+textarea{resize:vertical;min-height:90px}input:focus,textarea:focus{border-color:var(--b)}
+button{font:inherit;font-size:14px;border:0;border-radius:10px;padding:10px 14px;cursor:pointer;color:#fff;background:linear-gradient(90deg,var(--a),var(--b))}
+button.g{background:var(--card);border:1px solid var(--line);color:var(--text)}button.r{background:#3a1420;border:1px solid #6b2236;color:#ffb3c2}
+button:disabled{opacity:.5}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.card .meta{font-size:12px;color:var(--mute);margin-bottom:8px}.card .q{font-weight:600;margin-bottom:8px}.row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.msg{margin:10px 0;font-size:14px;color:var(--mute)}.err{color:#ff8fa8}.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><h1>NextGen Arena Admin</h1><div><button class="g" id="refresh" style="display:none">রিফ্রেশ</button> <button class="g" id="out" style="display:none">লগআউট</button></div></div>
+  <div id="login">
+    <input id="key" type="password" placeholder="অ্যাডমিন পাসওয়ার্ড (ADMIN_KEY)" autocomplete="current-password">
+    <div class="row"><button id="go">প্রবেশ করুন</button></div>
+  </div>
+  <div class="msg" id="msg"></div>
+  <div id="panel" style="display:none">
+    <h2 id="hq"></h2><div id="qs"></div>
+    <h2 id="ha"></h2><div id="as"></div>
+  </div>
+</div>
+<script>
+var KEY = '';
+try{ KEY = sessionStorage.getItem('nga_k') || ''; }catch(e){}
+function $(i){ return document.getElementById(i); }
+function say(t, bad){ $('msg').textContent = t || ''; $('msg').className = 'msg' + (bad ? ' err' : ''); }
+function api(body){
+  return fetch('/api/ask', {method:'POST', headers:{'Content-Type':'application/json','x-admin-key':KEY}, body:JSON.stringify(body)})
+    .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(d){ return {s:r.status, d:d}; }); });
+}
+function fmt(ts){ var d = new Date(ts); return d.toLocaleString('bn-BD', {dateStyle:'medium', timeStyle:'short'}); }
+function mk(tag, cls, txt){ var e = document.createElement(tag); if(cls) e.className = cls; if(txt !== undefined) e.textContent = txt; return e; }
+
+function load(){
+  say('লোড হচ্ছে...');
+  api({action:'list'}).then(function(x){
+    if(x.s === 401){ say('পাসওয়ার্ড ভুল।', true); showLogin(); return; }
+    if(x.s === 429){ say('অনেকবার ভুল চেষ্টা হয়েছে। ১৫ মিনিট পরে আবার চেষ্টা করুন।', true); showLogin(); return; }
+    if(x.s !== 200){ say('সার্ভারে সমস্যা। Vercel-এ ADMIN_KEY ও ডাটাবেস সেট আছে কি না দেখুন। (' + (x.d.error || x.s) + ')', true); showLogin(); return; }
+    say(''); $('login').style.display = 'none'; $('panel').style.display = 'block';
+    $('refresh').style.display = ''; $('out').style.display = '';
+    draw(x.d.questions || [], x.d.answers || []);
+  }).catch(function(){ say('ইন্টারনেট সমস্যা।', true); });
+}
+function showLogin(){ $('login').style.display = 'block'; $('panel').style.display = 'none'; $('refresh').style.display = 'none'; $('out').style.display = 'none'; }
+
+function draw(qs, as){
+  $('hq').textContent = 'নতুন প্রশ্ন (' + qs.length + ')';
+  $('ha').textContent = 'প্রকাশিত উত্তর (' + as.length + ')';
+  var box = $('qs'); box.innerHTML = '';
+  if(!qs.length) box.appendChild(mk('div','msg','কোনো নতুন প্রশ্ন নেই।'));
+  qs.forEach(function(q){
+    var c = mk('div','card');
+    c.appendChild(mk('div','meta', fmt(q.ts) + ' · ' + (q.lang === 'en' ? 'English' : 'বাংলা')));
+    var qt = mk('textarea'); qt.value = q.text; qt.style.minHeight = '60px'; c.appendChild(qt);
+    var at = mk('textarea'); at.placeholder = 'উত্তর লিখুন...'; at.style.marginTop = '8px'; c.appendChild(at);
+    var row = mk('div','row');
+    var pub = mk('button',null,'প্রকাশ করুন');
+    pub.onclick = function(){
+      if(at.value.trim().length < 2){ say('আগে উত্তর লিখুন।', true); return; }
+      pub.disabled = true;
+      api({action:'publish', id:q.id, question:qt.value, answer:at.value}).then(function(x){
+        if(x.s === 200){ say('প্রকাশ হয়েছে।'); load(); } else { say('প্রকাশ করা যায়নি (' + (x.d.error || x.s) + ')', true); pub.disabled = false; }
+      });
+    };
+    var del = mk('button','r','মুছুন');
+    del.onclick = function(){ if(!confirm('প্রশ্নটি মুছে ফেলবেন?')) return; api({action:'delete', id:q.id}).then(load); };
+    row.appendChild(pub); row.appendChild(del); c.appendChild(row); box.appendChild(c);
+  });
+  var ab = $('as'); ab.innerHTML = '';
+  if(!as.length) ab.appendChild(mk('div','msg','এখনো কিছু প্রকাশ হয়নি।'));
+  as.forEach(function(a){
+    var c = mk('div','card');
+    c.appendChild(mk('div','meta', fmt(a.ts)));
+    c.appendChild(mk('div','q', a.q));
+    c.appendChild(mk('div',null, a.a));
+    var row = mk('div','row'); var un = mk('button','g','প্রকাশ সরান');
+    un.onclick = function(){ if(!confirm('উত্তরটি সাইট থেকে সরাবেন?')) return; api({action:'unpublish', id:a.id}).then(load); };
+    row.appendChild(un); c.appendChild(row); ab.appendChild(c);
+  });
+}
+$('go').onclick = function(){ KEY = $('key').value; try{ sessionStorage.setItem('nga_k', KEY); }catch(e){} load(); };
+$('key').addEventListener('keydown', function(e){ if(e.key === 'Enter') $('go').click(); });
+$('refresh').onclick = load;
+$('out').onclick = function(){ KEY = ''; try{ sessionStorage.removeItem('nga_k'); }catch(e){} showLogin(); say(''); };
+if(KEY) load();
+</script>
+</body>
+</html>
